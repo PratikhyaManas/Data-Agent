@@ -1,0 +1,4 @@
+{"id": "v_001", "request": "Compare average rating across vehicle types", "data_source": "data/vehicles.csv", "acceptable_chart_types": ["bar"]}
+{"id": "v_002", "request": "Show the relationship between total rides and average rating for each user", "data_source": "data/users.csv", "acceptable_chart_types": ["scatter"]}
+{"id": "v_003", "request": "Show what proportion of vehicles belong to each vehicle type", "data_source": "data/vehicles.csv", "acceptable_chart_types": ["pie", "bar"]}
+{"id": "v_004", "request": "Rank users by total rides from highest to lowest", "data_source": "data/users.csv", "acceptable_chart_types": ["bar"]}

@@ -1,0 +1,9 @@
+vehicle_id,vehicle_type,rating,driver_name
+1,sedan,4.8,Alice
+2,suv,4.5,Bob
+3,sedan,4.2,Carol
+4,hatchback,4.9,Dave
+5,suv,4.1,Eve
+6,sedan,4.6,Frank
+7,hatchback,4.3,Grace
+8,suv,4.7,Heidi

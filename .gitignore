@@ -1,0 +1,34 @@
+# Secrets - never commit real credentials
+.env
+
+# Local data / generated artifacts
+data/*.db
+data/audit_log.jsonl
+data/audit_log.jsonl.1
+data/query_cache.json
+data/extract/
+data/transform/
+data/charts/
+
+# Eval run artifacts (not fixtures - datasets/ stays committed)
+evals/results/*.json
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+coverage.xml
+
+# Virtual envs
+.venv/
+venv/
+
+# Security scan output (generated in CI, not meant to be committed)
+bandit-results.sarif
+semgrep-results.sarif
+
+# Build artifacts
+data_agent_build.tar.gz

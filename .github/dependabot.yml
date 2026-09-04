@@ -1,0 +1,26 @@
+version: 2
+updates:
+  # Continuous SCA for runtime + dev dependencies. pip-audit in CI catches
+  # known CVEs at PR time; Dependabot catches CVEs disclosed *after* merge
+  # by opening a PR automatically when an advisory lands.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "security"
+    groups:
+      security-patches:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "ci"

@@ -1,0 +1,56 @@
+name: Evals
+
+# Deliberately NOT on every push/PR - these calls cost API credits and
+# take longer than the deterministic pytest suite in ci-cd.yml. Run on
+# a schedule to catch model/prompt drift, on demand, and optionally when
+# someone explicitly labels a PR (e.g. "run-evals") if they changed a
+# prompt or agent graph.
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # weekly, Monday 06:00 UTC
+  workflow_dispatch:
+  pull_request:
+    types: [labeled]
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  evals:
+    name: Run eval suite
+    if: github.event_name != 'pull_request' || github.event.label.name == 'run-evals'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --no-dev
+
+      - name: Seed demo database
+        run: uv run python feed_db.py
+
+      - name: Run eval suite
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: uv run python -m evals.run_all
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: evals/results/
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## Eval Results" >> "$GITHUB_STEP_SUMMARY"
+          for f in evals/results/*.json; do
+            name=$(basename "$f" .json)
+            score=$(python3 -c "import json; print(f'{json.load(open(\"$f\"))[\"accuracy\"]:.0%}')" 2>/dev/null || echo "n/a")
+            echo "- **${name}**: ${score}" >> "$GITHUB_STEP_SUMMARY"
+          done

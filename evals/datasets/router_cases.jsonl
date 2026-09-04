@@ -1,0 +1,10 @@
+{"id": "r_001", "question": "Show me the top 5 users with the highest ratings", "expected_route": "sql"}
+{"id": "r_002", "question": "Extract data from https://pokeapi.co/api/v2/pokemon and save it as CSV", "expected_route": "etl"}
+{"id": "r_003", "question": "Chart average rating per vehicle type as a bar chart", "expected_route": "visualization"}
+{"id": "r_004", "question": "do the thing with the stuff please", "expected_route": "clarify"}
+{"id": "r_005", "question": "Transform data/extract/x.csv by adding a discount column", "expected_route": "etl"}
+{"id": "r_006", "question": "How many users have more than 100 total rides?", "expected_route": "sql"}
+{"id": "r_007", "question": "Visualize the distribution of vehicle ratings", "expected_route": "visualization"}
+{"id": "r_008", "question": "pull some data for me", "expected_route": "clarify"}
+{"id": "r_009", "question": "What is the average rating grouped by vehicle type?", "expected_route": "sql"}
+{"id": "r_010", "question": "Plot total rides vs average rating per user as a scatter plot", "expected_route": "visualization"}

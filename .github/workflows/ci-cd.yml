@@ -1,0 +1,174 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write   # required to upload SARIF to the Security tab
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ---------------------------------------------------------------------
+  # SAST — static analysis of OUR code. Runs first; nothing downstream
+  # starts until this passes.
+  # ---------------------------------------------------------------------
+  sast:
+    name: SAST (Bandit + Semgrep)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install security tools
+        run: uv sync --group dev
+
+      - name: Bandit (Python-specific SAST)
+        run: |
+          bandit -r agents Models utils main.py feed_db.py view_audit_log.py \
+            -c pyproject.toml \
+            -f sarif -o bandit-results.sarif \
+            --severity-level medium --confidence-level medium
+
+      - name: Upload Bandit SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: bandit-results.sarif
+          category: bandit
+
+      - name: Semgrep (broader rule-based SAST)
+        run: |
+          semgrep scan \
+            --config=p/python \
+            --config=p/security-audit \
+            --config=p/secrets \
+            --sarif --output=semgrep-results.sarif \
+            --error \
+            agents Models utils main.py feed_db.py view_audit_log.py
+
+      - name: Upload Semgrep SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep-results.sarif
+          category: semgrep
+
+  # ---------------------------------------------------------------------
+  # SCA — scans the project dependency groups declared in pyproject.toml
+  # for known CVEs via OSV/PyPI advisory data. Independent of SAST so a
+  # failure here clearly means "vulnerable dependency," not "bad code."
+  # ---------------------------------------------------------------------
+  sca:
+    name: SCA (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv and project deps
+        run: uv sync --group dev
+
+      - name: Audit runtime dependencies
+        run: uv pip compile pyproject.toml --output-file /tmp/requirements.txt && pip-audit -r /tmp/requirements.txt --strict --desc
+
+      - name: Audit dev/CI dependencies
+        run: uv pip compile pyproject.toml --group dev --output-file /tmp/requirements-dev.txt && pip-audit -r /tmp/requirements-dev.txt --strict --desc
+
+  # ---------------------------------------------------------------------
+  # Lint — fast feedback, runs in parallel with sast/sca since it's a
+  # different class of check (style/correctness, not security).
+  # ---------------------------------------------------------------------
+  lint:
+    name: Lint (Ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: uv sync --group dev
+      - run: uv run ruff check .
+
+  # ---------------------------------------------------------------------
+  # Test — only runs once SAST + SCA + lint are clean. No point running
+  # the test suite against code/dependencies we already know are unsafe.
+  # ---------------------------------------------------------------------
+  test:
+    name: Unit Tests
+    needs: [sast, sca, lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run pytest
+        run: uv run pytest tests/ --cov-report=xml
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+  # ---------------------------------------------------------------------
+  # Build — only after every gate above (security + quality + tests) is
+  # green. This is the earliest point it's safe to produce an artifact.
+  # ---------------------------------------------------------------------
+  build:
+    name: Build
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build package
+        run: |
+          python3 -m compileall agents Models utils main.py feed_db.py view_audit_log.py
+          tar -czf data_agent_build.tar.gz agents Models utils main.py feed_db.py \
+            view_audit_log.py pyproject.toml README.md
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-agent-build
+          path: data_agent_build.tar.gz
+          retention-days: 14
+
+  # ---------------------------------------------------------------------
+  # Deploy — manual gate via GitHub Environments (add required reviewers
+  # in repo Settings > Environments > production). Only fires on main.
+  # ---------------------------------------------------------------------
+  deploy:
+    name: Deploy (production)
+    needs: [build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: data-agent-build
+
+      - name: Deploy
+        run: |
+          echo "Wire this step up to your actual deploy target"
+          echo "(container registry push, server rsync, PaaS CLI, etc.)"

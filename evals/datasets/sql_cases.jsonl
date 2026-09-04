@@ -1,0 +1,7 @@
+{"id": "sql_001", "question": "Show me the top 5 users with the highest ratings", "golden_sql": "SELECT user_name, avg_rating FROM users ORDER BY avg_rating DESC LIMIT 5"}
+{"id": "sql_002", "question": "What is the average rating for each vehicle type?", "golden_sql": "SELECT vehicle_type, AVG(rating) FROM vehicles GROUP BY vehicle_type"}
+{"id": "sql_003", "question": "Which driver has the single highest rated vehicle?", "golden_sql": "SELECT driver_name, rating FROM vehicles ORDER BY rating DESC LIMIT 1"}
+{"id": "sql_004", "question": "How many users have more than 100 total rides?", "golden_sql": "SELECT COUNT(*) FROM users WHERE total_rides > 100"}
+{"id": "sql_005", "question": "List all SUV vehicles sorted by rating from highest to lowest", "golden_sql": "SELECT vehicle_id, vehicle_type, rating, driver_name FROM vehicles WHERE vehicle_type = 'suv' ORDER BY rating DESC"}
+{"id": "sql_006", "question": "What is the lowest average rating among all users?", "golden_sql": "SELECT MIN(avg_rating) FROM users"}
+{"id": "sql_007", "question": "How many distinct vehicle types are there?", "golden_sql": "SELECT COUNT(DISTINCT vehicle_type) FROM vehicles"}
