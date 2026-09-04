@@ -19,7 +19,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "bandit[toml]>=1.7.9",
-    "semgrep>=1.78.0",
+    "semgrep>=1.176.0",
     "pip-audit>=2.7.3",
     "ruff>=0.6.0",
     "pytest>=8.3.0",
