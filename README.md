@@ -1,4 +1,16 @@
-# 🤖 Data Agent — Multi-Agent Data System (LangGraph + Claude)
+<p align="center">
+  <img src="assets/banner.svg" alt="Data Agent — Multi-Agent Data System (LangGraph + Claude)" width="100%">
+</p>
+
+<h1 align="center">🤖 Data Agent — Multi-Agent Data System (LangGraph + Claude)</h1>
+
+<p align="center">
+  <img alt="Python" src="https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white">
+  <img alt="LangGraph" src="https://img.shields.io/badge/LangGraph-StateGraph-1e293b?logo=graphql&logoColor=white">
+  <img alt="Claude" src="https://img.shields.io/badge/Anthropic-Claude-a855f7">
+  <img alt="uv" src="https://img.shields.io/badge/deps-uv-38bdf8">
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-22c55e">
+</p>
 
 A router agent that classifies natural-language requests and dispatches
 them to specialized sub-agents. The repo now uses a single uv-managed dependency model and a shared bootstrap helper instead of repeated path hacks.
@@ -51,20 +63,56 @@ The retry/fallback decision logic (`_resolve_with_fallback`) is factored out fro
 
 
 
-```
-                User request
-                     │
-                     ▼
-              ┌─────────────┐        conversation_history
-              │   Router    │◄────── (prior turns, for follow-ups)
-              └──────┬──────┘
-       ┌─────────────┼──────────────────┐
-       ▼              ▼                 ▼
- ┌───────────┐  ┌───────────┐    ┌───────────────┐
- │SQL Analyst│  │ETL Analyst│    │ Visualization │
- └───────────┘  └───────────┘    └───────────────┘
-       │
- every node logs to ──► data/audit_log.jsonl
+```mermaid
+flowchart TD
+    U["👤 User request"] -->|conversation_history<br/>prior turns, for follow-ups| R{{"🧭 Router"}}
+
+    R -->|route: sql| SQL["🗄️ SQL Analyst"]
+    R -->|route: etl| ETL["🔧 ETL Analyst"]
+    R -->|route: viz| VIZ["📊 Visualization Agent"]
+    R -.->|unclear intent| CLR(["❓ Clarify follow-up"])
+    CLR -.-> R
+
+    subgraph SQLFLOW[" "]
+        direction TB
+        SQL --> CACHE{"Cache hit?"}
+        CACHE -->|yes| COST
+        CACHE -->|no| GEN["Generate SQL"] --> OPT["Optimize query"] --> JUDGE1{"Judge: correct?"}
+        JUDGE1 -->|no, retry ≤2x| GEN
+        JUDGE1 -->|yes, cache it| COST["💰 Cost estimate"]
+        COST --> SAFE["🔒 Safety check"] --> EXEC["Execute on SQLite"]
+    end
+
+    subgraph ETLFLOW[" "]
+        direction TB
+        ETL --> TOOLS["Extract / Transform tools"] --> DQ["✅ Data quality check"]
+        DQ -->|critical finding| TOOLS
+        DQ --> JUDGE2{"Judge: correct?"}
+        JUDGE2 -->|no, retry ≤2x| TOOLS
+    end
+
+    subgraph VIZFLOW[" "]
+        direction TB
+        VIZ --> PLAN["Pick chart type + columns"] --> JUDGE3{"Judge: correct?"}
+        JUDGE3 -->|no, retry ≤2x| PLAN
+        JUDGE3 -->|yes| RENDER["Render + save PNG"]
+    end
+
+    EXEC --> LOG[("📜 data/audit_log.jsonl")]
+    JUDGE2 -->|yes| LOG
+    RENDER --> LOG
+
+    classDef router fill:#312e81,stroke:#a855f7,stroke-width:2px,color:#f8fafc;
+    classDef agent fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef judge fill:#1e293b,stroke:#f472b6,stroke-width:2px,color:#f8fafc;
+    classDef store fill:#0f172a,stroke:#22c55e,stroke-width:2px,color:#f8fafc;
+    classDef user fill:#0ea5e9,stroke:#0ea5e9,color:#0f172a,font-weight:bold;
+
+    class U user;
+    class R router;
+    class SQL,ETL,VIZ agent;
+    class CACHE,JUDGE1,JUDGE2,JUDGE3 judge;
+    class LOG store;
 ```
 
 **SQL Analyst flow:** curate question → gather schema → **check cache**
@@ -133,6 +181,8 @@ data_agent/
 │   ├── workflows/ci-cd.yml      # SAST → SCA → lint → test → build → deploy
 │   ├── workflows/evals.yml      # weekly/manual LLM eval suite (needs API key secret)
 │   └── dependabot.yml           # continuous SCA between CI runs
+├── assets/
+│   └── banner.svg               # README banner
 ├── agents/
 │   ├── data_agent.py           # router
 │   ├── sql_analyst.py
