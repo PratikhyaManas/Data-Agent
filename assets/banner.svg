@@ -73,5 +73,11 @@
 
     <rect x="604" y="168" width="130" height="30" rx="15" fill="#f472b620"/>
     <text x="669" y="188" fill="#f472b6" text-anchor="middle">LLM-as-Judge</text>
+
+    <rect x="746" y="168" width="110" height="30" rx="15" fill="#eab30820"/>
+    <text x="801" y="188" fill="#facc15" text-anchor="middle">Catalog</text>
+
+    <rect x="868" y="168" width="120" height="30" rx="15" fill="#06b6d420"/>
+    <text x="928" y="188" fill="#22d3ee" text-anchor="middle">Scheduler</text>
   </g>
 </svg>
