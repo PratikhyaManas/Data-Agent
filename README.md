@@ -22,7 +22,10 @@ them to specialized sub-agents. The repo now uses a single uv-managed dependency
 - **Query Optimizer** — reviews every generated SQL query for performance issues (missing LIMIT, `SELECT *`, unindexed scans) before it's judged and run
 - **Cost Estimator** — deterministic (no LLM) pass using SQLite's own `EXPLAIN QUERY PLAN`: flags full table scans on large tables so an expensive query doesn't run silently
 - **Data Quality Agent** — deterministic (no LLM) pass on every ETL output: null rates, duplicate rows, outliers (IQR method), empty results. A critical finding (e.g. zero rows) triggers a retry, same as the judge
-- **LLM-as-Judge (all three agents)** — an independent reviewer LLM checks the *output*, not just whether it ran without error:
+- **Pre-load source data quality check** — before `transform_load_tool` even runs, the source file it's about to load gets the same deterministic quality pass. Catches an already-bad source up front instead of only noticing after a wasted LLM-driven transform attempt (see `check_source_quality` in `agents/etl_analyst.py`)
+- **Data Catalog Agent** — maintains human-readable column descriptions across every table, file-backed in `data/data_catalog.json` (`utils/data_catalog.py`). Only generates descriptions for columns that aren't already cataloged unless a refresh is requested, so re-running it is cheap. Reachable from the router ("describe the users table", "what does vehicle_type mean") or directly via `agents/data_catalog_agent.py`
+- **Scheduled/recurring ETL runs** — `utils/scheduler.py` + `run_scheduler.py` register ETL requests (the same natural-language text you'd type at the CLI) to run on an interval (`hourly` / `daily` / `weekly` / a raw number of seconds), file-backed in `data/etl_schedule.json` so schedules survive restarts. Run `python run_scheduler.py run` from cron/Task Scheduler/a GitHub Actions schedule, or `--loop N` for a simple long-running poll
+- **LLM-as-Judge (all three generative agents)** — an independent reviewer LLM checks the *output*, not just whether it ran without error:
   - *SQL*: does the query answer the question correctly (right tables, joins, aggregations, filters)?
   - *ETL*: did the tool calls actually satisfy the request (right source, right format, right transform logic, no skipped steps) — informed by the data quality report
   - *Visualization*: does the chart type/columns fit the request and the data's shape (catches e.g. a pie chart with too many slices)?
@@ -70,6 +73,7 @@ flowchart TD
     R -->|route: sql| SQL["🗄️ SQL Analyst"]
     R -->|route: etl| ETL["🔧 ETL Analyst"]
     R -->|route: viz| VIZ["📊 Visualization Agent"]
+    R -->|route: catalog| CAT["📚 Data Catalog Agent"]
     R -.->|unclear intent| CLR(["❓ Clarify follow-up"])
     CLR -.-> R
 
@@ -79,16 +83,21 @@ flowchart TD
         CACHE -->|yes| COST
         CACHE -->|no| GEN["Generate SQL"] --> OPT["Optimize query"] --> JUDGE1{"Judge: correct?"}
         JUDGE1 -->|no, retry ≤2x| GEN
-        JUDGE1 -->|yes, cache it| COST["💰 Cost estimate"]
+        JUDGE1 -->|yes, cache it| COST["💰 Cost estimate<br/>(medium+ notes surfaced)"]
         COST --> SAFE["🔒 Safety check"] --> EXEC["Execute on SQLite"]
     end
 
     subgraph ETLFLOW[" "]
         direction TB
-        ETL --> TOOLS["Extract / Transform tools"] --> DQ["✅ Data quality check"]
-        DQ -->|critical finding| TOOLS
+        ETL --> SRCDQ{"transform_load_tool<br/>pending?"}
+        SRCDQ -->|"yes: pre-load check"| SRCQ["🔎 Source data quality"]
+        SRCQ -->|critical| ETL
+        SRCQ -->|ok/warning| TOOLS["Extract / Transform tools"]
+        SRCDQ -->|no, e.g. extract| TOOLS
+        TOOLS --> DQ["✅ Output data quality check"]
+        DQ -->|critical finding| ETL
         DQ --> JUDGE2{"Judge: correct?"}
-        JUDGE2 -->|no, retry ≤2x| TOOLS
+        JUDGE2 -->|no, retry ≤2x| ETL
     end
 
     subgraph VIZFLOW[" "]
@@ -98,9 +107,20 @@ flowchart TD
         JUDGE3 -->|yes| RENDER["Render + save PNG"]
     end
 
+    subgraph CATFLOW[" "]
+        direction TB
+        CAT --> SCHEMA["Gather schema + sample rows"] --> MISSING{"Columns missing<br/>a description?"}
+        MISSING -->|no| CATDONE["Skip LLM call"]
+        MISSING -->|yes| GENDESC["Generate descriptions"] --> CATALOG[("🗂️ data/data_catalog.json")]
+    end
+
+    SCHED[("⏱️ data/etl_schedule.json<br/>run_scheduler.py")] -.->|due job's request| ETL
+
     EXEC --> LOG[("📜 data/audit_log.jsonl")]
     JUDGE2 -->|yes| LOG
     RENDER --> LOG
+    CATDONE --> LOG
+    CATALOG --> LOG
 
     classDef router fill:#312e81,stroke:#a855f7,stroke-width:2px,color:#f8fafc;
     classDef agent fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
@@ -110,9 +130,9 @@ flowchart TD
 
     class U user;
     class R router;
-    class SQL,ETL,VIZ agent;
-    class CACHE,JUDGE1,JUDGE2,JUDGE3 judge;
-    class LOG store;
+    class SQL,ETL,VIZ,CAT agent;
+    class CACHE,JUDGE1,JUDGE2,JUDGE3,SRCDQ,MISSING judge;
+    class LOG,SCHED,CATALOG store;
 ```
 
 **SQL Analyst flow:** curate question → gather schema → **check cache**
@@ -164,6 +184,7 @@ want Postgres later; the rest of the code doesn't need to change.
 > now just show the ones with over 100 rides          # follow-up, uses memory
 > Extract data from https://pokeapi.co/api/v2/pokemon and save it as CSV
 > Chart average rating per vehicle type as a bar chart
+> Describe what each column in the vehicles table means
 > exit
 ```
 
@@ -172,6 +193,22 @@ Check what actually ran:
 ```bash
 python view_audit_log.py 10
 ```
+
+## Recurring ETL runs
+
+Register an ETL request to run on a schedule instead of typing it at the
+CLI every time:
+
+```bash
+python run_scheduler.py add "Extract data from https://pokeapi.co/api/v2/pokemon and save as CSV" --interval hourly --name pokeapi_sync
+python run_scheduler.py list
+python run_scheduler.py run              # run whatever's due right now, once, then exit
+python run_scheduler.py run --loop 300    # or keep polling every 5 minutes until Ctrl+C
+```
+
+Jobs are file-backed in `data/etl_schedule.json` so they survive restarts;
+wire `python run_scheduler.py run` up to cron, Windows Task Scheduler, or a
+GitHub Actions schedule for real recurring runs. See `utils/scheduler.py`.
 
 ## Project structure
 
@@ -187,15 +224,19 @@ data_agent/
 │   ├── data_agent.py           # router
 │   ├── sql_analyst.py
 │   ├── etl_analyst.py
-│   └── visualization_agent.py
+│   ├── visualization_agent.py
+│   └── data_catalog_agent.py    # maintains column descriptions across tables
 ├── Models/schema.py             # Pydantic state schemas
 ├── utils/
-│   ├── database.py              # SQLite access + safety checks
+│   ├── database.py              # SQLite access + safety checks + catalog introspection helpers
 │   ├── etl_tools.py             # extract/transform tools
 │   ├── viz_tools.py             # matplotlib chart renderer
 │   ├── cost_estimator.py        # deterministic EXPLAIN QUERY PLAN cost check
-│   ├── data_quality.py          # deterministic ETL output quality checks
+│   ├── data_quality.py          # deterministic data quality checks (ETL source + output)
+│   ├── data_catalog.py          # file-backed column description store (data/data_catalog.json)
+│   ├── scheduler.py             # recurring ETL job store + due-job logic (data/etl_schedule.json)
 │   ├── query_cache.py           # skips repeat LLM calls for judge-approved queries
+│   ├── file_lock.py             # shared cross-platform file locking + atomic JSON writes
 │   └── llm_pick.py              # model tiers + invoke_with_resilience() (retry/fallback)
 ├── tests/                        # pytest suite (deterministic logic, no API key)
 ├── evals/                        # LLM-behavior eval suite (needs API key) - see evals/README.md
@@ -203,8 +244,10 @@ data_agent/
 │   ├── metrics.py               # execution-accuracy + other scoring
 │   ├── run_router_eval.py / run_sql_eval.py / run_viz_eval.py / run_all.py
 │   └── results/                 # generated reports (gitignored)
-├── data/                        # sample CSVs, seeded DB, charts, extracts, audit_log.jsonl
+├── data/                        # sample CSVs, seeded DB, charts, extracts, audit_log.jsonl,
+│                                 # query_cache.json, etl_schedule.json, data_catalog.json
 ├── feed_db.py                   # seed SQLite from CSVs
+├── run_scheduler.py             # CLI for recurring ETL jobs (add/list/enable/disable/run)
 ├── view_audit_log.py            # inspect recent agent runs
 ├── pyproject.toml               # project metadata + uv dependency groups + bandit / ruff / pytest config
 ├── SECURITY.md                  # pipeline gates, known accepted SAST findings
@@ -248,6 +291,16 @@ route in `agents/data_agent.py`'s router prompt + conditional edges,
 the audit trail like the others, (5) adding tests under `tests/` for
 anything that doesn't require an LLM call.
 
-Ideas for further agents: data quality checks before ETL loads,
-scheduled/recurring ETL runs, a data catalog agent that maintains
-column descriptions across tables, cost estimation for expensive queries.
+Implemented since the last round of ideas: pre-load data quality checks
+before ETL loads (`check_source_quality` in `agents/etl_analyst.py`),
+scheduled/recurring ETL runs (`utils/scheduler.py` + `run_scheduler.py`),
+a data catalog agent that maintains column descriptions across tables
+(`agents/data_catalog_agent.py` + `utils/data_catalog.py`), and cost
+notes for expensive queries now surface at the `medium` cost level too,
+not just `high` (`agents/sql_analyst.py:generate_answer`).
+
+Ideas for further agents: a data lineage tracker that records which
+ETL runs and SQL queries fed into a given chart, alerting when a
+recurring ETL job's output fails its data quality check for N
+consecutive runs, and a natural-language diff between two data catalog
+snapshots after a schema change.

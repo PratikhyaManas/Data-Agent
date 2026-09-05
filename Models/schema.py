@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 class RouterSchema(BaseModel):
     """Structured output the router LLM must produce."""
-    answer: Literal["sql", "etl", "visualization", "clarify"] = Field(
+    answer: Literal["sql", "etl", "visualization", "catalog", "clarify"] = Field(
         description="Which sub-agent should handle this request."
     )
     comments: str = Field(description="Short reasoning for the routing decision.")
@@ -96,6 +96,9 @@ class ETLAgentSchema(BaseModel):
     data_quality_report: str = ""
     dq_severity: Literal["ok", "warning", "critical", ""] = ""
     dq_retries: int = 0
+    source_quality_report: str = ""
+    source_dq_severity: Literal["ok", "warning", "critical", ""] = ""
+    source_dq_retries: int = 0
 
 
 class ETLJudgeSchema(BaseModel):
@@ -159,4 +162,34 @@ class VizJudgeSchema(BaseModel):
         description="If incorrect: specific, actionable feedback on what to change. "
         "If correct: brief confirmation of why this chart spec fits."
     )
+
+
+# ---------------------------------------------------------------------------
+# Data Catalog Agent
+# ---------------------------------------------------------------------------
+class DataCatalogSchema(BaseModel):
+    """State for the agent that maintains column descriptions across tables."""
+    tables_filter: List[str] = Field(
+        default_factory=list, description="Optional subset of tables to catalog; empty means all tables."
+    )
+    refresh: bool = Field(
+        default=False, description="If True, regenerate descriptions even for already-cataloged columns."
+    )
+    schema_text: str = ""
+    updated_columns: int = 0
+    catalog_report: str = ""
+    final_answer: str = ""
+
+
+class ColumnDescriptionSchema(BaseModel):
+    table: str = Field(description="Table this column belongs to.")
+    column: str = Field(description="Column name.")
+    description: str = Field(
+        description="Concise, human-readable description of what this column represents, "
+        "inferred from its name, declared type, and sample values."
+    )
+
+
+class ColumnDescriptionListSchema(BaseModel):
+    descriptions: List[ColumnDescriptionSchema] = Field(default_factory=list)
 

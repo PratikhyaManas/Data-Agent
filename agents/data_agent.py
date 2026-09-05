@@ -8,18 +8,20 @@ clarifying question if intent is ambiguous.
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import HumanMessage
 
-from Models.schema import DataAgentSchema, RouterSchema, AgentSchema, ETLAgentSchema, VizAgentSchema
+from Models.schema import DataAgentSchema, RouterSchema, AgentSchema, ETLAgentSchema, VizAgentSchema, DataCatalogSchema
 from utils.llm_pick import invoke_with_resilience
 from utils.audit import log_event
 from agents.sql_analyst import sql_analyst
 from agents.etl_analyst import etl_analyst
 from agents.visualization_agent import visualization_agent
+from agents.data_catalog_agent import data_catalog_agent
 
 ROUTER_PROMPT = (
     "Classify the user's request into exactly one category:\n"
     "- 'sql': questions that require querying a database (aggregations, filters, lookups)\n"
     "- 'etl': requests to extract data from an API, or transform/reshape a data file\n"
     "- 'visualization': requests to chart, plot, graph, or visualize data\n"
+    "- 'catalog': requests to describe, document, or explain what columns/tables mean\n"
     "- 'clarify': the request is too ambiguous to route confidently\n\n"
     "Recent conversation (most recent last, may be empty):\n{history}\n\n"
     "Current user request: {question}\n\n"
@@ -85,6 +87,16 @@ def viz_node(state: DataAgentSchema) -> DataAgentSchema:
     return state
 
 
+def catalog_node(state: DataAgentSchema) -> DataAgentSchema:
+    question = state.messages[-1].content
+    refresh = any(kw in question.lower() for kw in ("refresh", "regenerate", "update all"))
+    result = data_catalog_agent.invoke(DataCatalogSchema(refresh=refresh))
+    answer = result["final_answer"] if isinstance(result, dict) else result.final_answer
+    state.final_answer = answer
+    log_event("catalog_run", question=question, refresh=refresh, result=answer)
+    return state
+
+
 def clarify_node(state: DataAgentSchema) -> DataAgentSchema:
     state.final_answer = (
         "I'm not sure whether this is a database query, a data extraction/transform "
@@ -108,17 +120,19 @@ def build_data_agent():
     graph.add_node("sql", sql_node)
     graph.add_node("etl", etl_node)
     graph.add_node("visualization", viz_node)
+    graph.add_node("catalog", catalog_node)
     graph.add_node("clarify", clarify_node)
 
     graph.set_entry_point("route")
     graph.add_conditional_edges(
         "route",
         route_decision,
-        {"sql": "sql", "etl": "etl", "visualization": "visualization", "clarify": "clarify"},
+        {"sql": "sql", "etl": "etl", "visualization": "visualization", "catalog": "catalog", "clarify": "clarify"},
     )
     graph.add_edge("sql", END)
     graph.add_edge("etl", END)
     graph.add_edge("visualization", END)
+    graph.add_edge("catalog", END)
     graph.add_edge("clarify", END)
 
     return graph.compile()

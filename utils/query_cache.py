@@ -13,8 +13,9 @@ import json
 import os
 import sys
 import time
-from contextlib import contextmanager
 from typing import Any, Dict, Optional
+
+from utils.file_lock import locked, atomic_write_json
 
 CACHE_PATH = os.getenv("QUERY_CACHE_PATH", "data/query_cache.json")
 CACHE_TTL_SECONDS = int(os.getenv("QUERY_CACHE_TTL_SECONDS", str(24 * 60 * 60)))  # 1 day default
@@ -28,80 +29,8 @@ CACHE_TTL_SECONDS = int(os.getenv("QUERY_CACHE_TTL_SECONDS", str(24 * 60 * 60)))
 # silently discarding the other's entry. Verified directly: 30 concurrent
 # writers against the unlocked version lost ~3 entries and, worse, could
 # crash outright when two processes collided on the same shared ".tmp"
-# filename mid-write. fcntl.flock (POSIX) fixes both by serializing the
-# whole cycle; on non-POSIX platforms (no fcntl) this degrades to no
-# locking - acceptable for this project's actual deployment model
-# (Linux CI, single-user local CLI) but worth knowing if that changes.
-try:
-    import fcntl
-    _HAS_FCNTL = True
-except ImportError:  # pragma: no cover - Windows has no fcntl
-    fcntl = None
-    _HAS_FCNTL = False
-
-try:
-    import msvcrt
-    _HAS_MSVCRT = True
-except ImportError:  # pragma: no cover - non-Windows platforms
-    msvcrt = None
-    _HAS_MSVCRT = False
-
-
-@contextmanager
-def _locked():
-    """Serializes the read-modify-write cycle across processes.
-
-    Windows' locking semantics are stricter than POSIX, so we retry briefly
-    when the lock is contended instead of silently downgrading to the unsafe
-    unlocked path.
-    """
-    lock_path = CACHE_PATH + ".lock"
-    lock_file = None
-    try:
-        os.makedirs(os.path.dirname(lock_path) or ".", exist_ok=True)
-        lock_file = open(lock_path, "a+b")
-
-        if _HAS_FCNTL:
-            for _ in range(100):
-                try:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    break
-                except BlockingIOError:
-                    time.sleep(0.01)
-                except OSError:
-                    raise
-            else:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        elif _HAS_MSVCRT:
-            for _ in range(100):
-                try:
-                    lock_file.seek(0)
-                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
-                    break
-                except OSError:
-                    time.sleep(0.01)
-            else:
-                lock_file.seek(0)
-                msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
-        else:
-            yield
-            return
-    except OSError as e:
-        print(f"[query_cache] warning: could not acquire lock, proceeding unlocked: {e}", file=sys.stderr)
-        yield
-        return
-
-    try:
-        yield
-    finally:
-        try:
-            if _HAS_FCNTL:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-            elif _HAS_MSVCRT:
-                lock_file.seek(0)
-                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
-        finally:
-            lock_file.close()
+# filename mid-write. utils/file_lock.locked() (fcntl on POSIX, msvcrt on
+# Windows) fixes both by serializing the whole read-modify-write cycle.
 
 
 def build_cache_key(curated_question: str, schema: str) -> str:
@@ -139,17 +68,7 @@ def _purge_expired(cache: Dict[str, Any]) -> Dict[str, Any]:
 def _save_cache(cache: Dict[str, Any]) -> None:
     """Best-effort: a cache write failure shouldn't break the SQL pipeline
     that's just trying to use this as an optimization."""
-    try:
-        os.makedirs(os.path.dirname(CACHE_PATH) or ".", exist_ok=True)
-        # Unique per-call temp filename (pid + timestamp), not a fixed
-        # ".tmp" suffix - otherwise concurrent writers collide on the same
-        # temp file and os.replace() can fail outright (see module docstring).
-        tmp_path = f"{CACHE_PATH}.{os.getpid()}.{time.time_ns()}.tmp"
-        with open(tmp_path, "w") as f:
-            json.dump(cache, f, indent=2)
-        os.replace(tmp_path, CACHE_PATH)  # atomic on POSIX - avoids a torn write on crash
-    except OSError as e:
-        print(f"[query_cache] warning: failed to write cache: {e}", file=sys.stderr)
+    atomic_write_json(CACHE_PATH, cache)
 
 
 def get_cached_query(cache_key: str) -> Optional[Dict[str, Any]]:
@@ -166,7 +85,7 @@ def get_cached_query(cache_key: str) -> Optional[Dict[str, Any]]:
 
 
 def set_cached_query(cache_key: str, sql: str, optimizer_notes: str = "") -> None:
-    with _locked():
+    with locked(CACHE_PATH):
         cache = _purge_expired(_load_cache())
         cache[cache_key] = {
             "sql": sql,
@@ -177,7 +96,7 @@ def set_cached_query(cache_key: str, sql: str, optimizer_notes: str = "") -> Non
 
 
 def clear_cache() -> None:
-    with _locked():
+    with locked(CACHE_PATH):
         try:
             if os.path.exists(CACHE_PATH):
                 os.remove(CACHE_PATH)

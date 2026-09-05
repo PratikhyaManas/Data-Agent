@@ -76,3 +76,33 @@ class TestQueryExecution:
         assert "users" in details
         assert "name" in details
         assert "rating" in details
+
+
+class TestCatalogHelpers:
+    """Deterministic schema-introspection helpers used by the data catalog agent."""
+
+    def test_list_tables_excludes_sqlite_internal_tables(self, db):
+        tables = db.list_tables()
+        assert tables == ["users"]
+        assert all(not t.startswith("sqlite_") for t in tables)
+
+    def test_column_info_returns_name_type_and_flags(self, db):
+        cols = db.column_info("users")
+        by_name = {c["name"]: c for c in cols}
+        assert set(by_name) == {"id", "name", "rating"}
+        assert by_name["name"]["type"] == "TEXT"
+        assert by_name["rating"]["type"] == "REAL"
+
+    def test_column_info_rejects_unknown_table(self, db):
+        with pytest.raises(ValueError):
+            db.column_info("nonexistent_table")
+
+    def test_sample_rows_returns_limited_rows(self, db):
+        rows = db.sample_rows("users", n=1)
+        assert len(rows) == 1
+        assert rows[0]["name"] in ("Alice", "Bob")
+
+    def test_sample_rows_rejects_unknown_table(self, db):
+        with pytest.raises(ValueError):
+            db.sample_rows("nonexistent_table")
+

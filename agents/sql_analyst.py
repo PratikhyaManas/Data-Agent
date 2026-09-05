@@ -243,6 +243,12 @@ def generate_answer(state: AgentSchema) -> AgentSchema:
 
     if state.cost_level == "high":
         answer += f"\n\n💰 Cost note: {state.cost_notes}"
+    elif state.cost_level == "medium":
+        # Previously only "high" cost surfaced anything to the user, so a
+        # moderate full-table scan (cheap here, but worth an index if the
+        # table grows) was computed by estimate_cost and audit-logged, but
+        # silently dropped from the answer the user actually sees.
+        answer += f"\n\nℹ️ Cost note: {state.cost_notes}"
 
     state.final_answer = answer
     return state

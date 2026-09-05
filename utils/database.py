@@ -74,6 +74,41 @@ class DatabaseUtil:
         self._schema_cache_at = now
         return result
 
+    def list_tables(self) -> List[str]:
+        """Table names only, for callers (e.g. the data catalog agent) that
+        need to iterate tables individually rather than one combined string."""
+        with self._connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
+            return [r[0] for r in cur.fetchall() if not r[0].startswith("sqlite_")]
+
+    def column_info(self, table: str) -> List[Dict[str, Any]]:
+        """[{"name": ..., "type": ..., "notnull": bool, "pk": bool}, ...] for one table."""
+        if table not in self.list_tables():
+            raise ValueError(f"Unknown table: {table}")
+        with self._connection() as conn:
+            cur = conn.cursor()
+            # nosec B608 - `table` is validated against list_tables() (our own
+            # sqlite_master) above, not passed through from user/LLM input.
+            cur.execute(f"PRAGMA table_info({table});")
+            cols = cur.fetchall()  # (cid, name, type, notnull, dflt, pk)
+        return [
+            {"name": c[1], "type": c[2], "notnull": bool(c[3]), "pk": bool(c[5])}
+            for c in cols
+        ]
+
+    def sample_rows(self, table: str, n: int = 5) -> List[Dict[str, Any]]:
+        """A handful of rows from `table`, for context when generating
+        column descriptions. Not user input - `table` is validated the
+        same way as column_info() above."""
+        if table not in self.list_tables():
+            raise ValueError(f"Unknown table: {table}")
+        with self._connection() as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute(f"SELECT * FROM {table} LIMIT ?;", (n,))  # nosec B608 - table validated above
+            return [dict(r) for r in cur.fetchall()]
+
     @staticmethod
     def is_query_safe(sql: str) -> bool:
         upper = sql.upper()
