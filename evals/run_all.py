@@ -7,15 +7,13 @@ Usage: python -m evals.run_all
 Requires: ANTHROPIC_API_KEY set, and `python feed_db.py` already run
 (the SQL eval needs the seeded demo DB).
 """
-import os
 import sys
-
-from project_bootstrap import ensure_repo_root
-
-ensure_repo_root()
 
 from evals import run_router_eval, run_sql_eval, run_viz_eval
 from evals.metrics import accuracy
+from project_bootstrap import ensure_repo_root
+
+ensure_repo_root()
 
 
 def main():

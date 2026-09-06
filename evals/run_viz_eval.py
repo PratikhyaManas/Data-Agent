@@ -12,15 +12,15 @@ Requires: ANTHROPIC_API_KEY set.
 """
 import json
 import os
+import sys
 import time
-
-from project_bootstrap import ensure_repo_root
-
-ensure_repo_root()
 
 from Models.schema import VizAgentSchema
 from agents.visualization_agent import visualization_agent
 from evals.metrics import accuracy
+from project_bootstrap import ensure_repo_root
+
+ensure_repo_root()
 
 CASES_PATH = os.path.join(os.path.dirname(__file__), "datasets", "viz_cases.jsonl")
 RESULTS_PATH = os.path.join(os.path.dirname(__file__), "results", "viz_eval_results.json")

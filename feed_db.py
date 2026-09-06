@@ -5,13 +5,12 @@ Run once before using the SQL Analyst agent: `python feed_db.py`
 import os
 import sqlite3
 
-from project_bootstrap import ensure_repo_root
-
-ensure_repo_root()
-
 import pandas as pd
 from dotenv import load_dotenv
 
+from project_bootstrap import ensure_repo_root
+
+ensure_repo_root()
 load_dotenv()
 
 DB_PATH = os.getenv("DB_PATH", "data/data_agent.db")

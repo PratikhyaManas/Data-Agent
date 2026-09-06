@@ -4,9 +4,8 @@ every SQL query before execution - this is the most security-critical
 piece of the whole system, so it's tested directly rather than only
 indirectly through the LLM pipeline.
 """
-import os
 import sqlite3
-import tempfile
+
 import pytest
 
 from utils.database import DatabaseUtil

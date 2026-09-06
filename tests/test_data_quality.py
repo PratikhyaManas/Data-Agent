@@ -1,6 +1,5 @@
 """Tests for utils/data_quality.py."""
 import pandas as pd
-import pytest
 
 from utils.data_quality import run_quality_checks
 

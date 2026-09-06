@@ -5,9 +5,8 @@ Does NOT make real network calls (no CI environment should depend on
 external API availability).
 """
 import pandas as pd
-import pytest
 
-from utils.etl_tools import transform_load_tool, MAX_RESPONSE_BYTES, SAFE_BUILTINS
+from utils.etl_tools import MAX_RESPONSE_BYTES, SAFE_BUILTINS, transform_load_tool
 
 
 def test_size_cap_constant_is_reasonable():

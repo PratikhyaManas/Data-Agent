@@ -1,7 +1,6 @@
 """Tests for utils/audit.py."""
 import json
 import os
-import importlib
 
 import utils.audit as audit_module
 

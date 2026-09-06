@@ -10,16 +10,16 @@ Requires: ANTHROPIC_API_KEY set, and `python feed_db.py` already run.
 """
 import json
 import os
+import sys
 import time
-
-from project_bootstrap import ensure_repo_root
-
-ensure_repo_root()
 
 from Models.schema import AgentSchema
 from agents.sql_analyst import sql_analyst
-from utils.database import DatabaseUtil
 from evals.metrics import rows_equal, accuracy
+from project_bootstrap import ensure_repo_root
+from utils.database import DatabaseUtil
+
+ensure_repo_root()
 
 CASES_PATH = os.path.join(os.path.dirname(__file__), "datasets", "sql_cases.jsonl")
 RESULTS_PATH = os.path.join(os.path.dirname(__file__), "results", "sql_eval_results.json")

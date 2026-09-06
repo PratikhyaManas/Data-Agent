@@ -1,13 +1,11 @@
 """Tests for utils/query_cache.py."""
 import importlib
-import os
 import time
 
 import utils.query_cache as qc
 
 
 def _worker_for_concurrent_cache(path, key_id):
-    import importlib
     import utils.query_cache as qc_worker
 
     importlib.reload(qc_worker)

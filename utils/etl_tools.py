@@ -3,7 +3,7 @@ Tools the ETL agent can call. Each is decorated with @tool so it can
 be bound directly to a LangChain LLM for tool-calling.
 """
 import os
-import json
+
 import pandas as pd
 import requests
 from langchain_core.tools import tool

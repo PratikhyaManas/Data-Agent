@@ -9,16 +9,16 @@ Requires: ANTHROPIC_API_KEY set.
 """
 import json
 import os
+import sys
 import time
-
-from project_bootstrap import ensure_repo_root
-
-ensure_repo_root()
 
 from langchain_core.messages import HumanMessage
 from Models.schema import DataAgentSchema
 from agents.data_agent import route_node
 from evals.metrics import accuracy
+from project_bootstrap import ensure_repo_root
+
+ensure_repo_root()
 
 CASES_PATH = os.path.join(os.path.dirname(__file__), "datasets", "router_cases.jsonl")
 RESULTS_PATH = os.path.join(os.path.dirname(__file__), "results", "router_eval_results.json")

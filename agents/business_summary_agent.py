@@ -74,8 +74,8 @@ def summarize_business_context(state: BusinessSummaryAgentSchema) -> BusinessSum
     state.final_answer = (
         f"{result.headline}\n\n"
         f"{audience_briefing}\n\n"
-        f"Key insights:\n" + "\n".join(f"- {item}" for item in result.key_insights) + "\n\n"
-        f"Recommended actions:\n" + "\n".join(
+        "Key insights:\n" + "\n".join(f"- {item}" for item in result.key_insights) + "\n\n"
+        "Recommended actions:\n" + "\n".join(
             f"- {item.title} [{item.priority}] - {item.impact} ({item.owner}; dashboard tile: {item.dashboard_tile})"
             for item in result.recommendations
         ) + "\n\n"

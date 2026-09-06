@@ -4,19 +4,17 @@ Type natural language requests; type 'exit' to quit.
 """
 import os
 
+from dotenv import load_dotenv
+from langchain_core.messages import AIMessage, HumanMessage
+
+from agents.data_agent import DataAgentSchema, data_agent
 from project_bootstrap import ensure_repo_root
 
 ensure_repo_root()
-
-from dotenv import load_dotenv
-
 load_dotenv()
 
 if not os.getenv("ANTHROPIC_API_KEY"):
     raise SystemExit("Set ANTHROPIC_API_KEY in your .env file first (see .env.example).")
-
-from langchain_core.messages import HumanMessage, AIMessage
-from agents.data_agent import data_agent, DataAgentSchema
 
 
 def _extract_audience_prefix(user_input: str):

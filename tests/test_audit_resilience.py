@@ -3,7 +3,6 @@ Additional tests for utils/audit.py: fail-safe writes and rotation.
 (test_audit.py already covers basic write/read; this covers the
 resilience improvements added afterward.)
 """
-import json
 import os
 
 import utils.audit as audit_module

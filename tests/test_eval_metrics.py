@@ -1,5 +1,5 @@
 """Tests for evals/metrics.py - the scoring logic behind the eval harness."""
-from evals.metrics import rows_equal, normalize_rows, rows_subset, accuracy
+from evals.metrics import accuracy, rows_equal, rows_subset
 
 
 def test_rows_equal_matches_despite_different_column_aliases():
