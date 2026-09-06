@@ -12,25 +12,42 @@
   <img alt="License" src="https://img.shields.io/badge/license-MIT-22c55e">
 </p>
 
-A router agent that classifies natural-language requests and dispatches
-them to specialized sub-agents. The repo now uses a single uv-managed dependency model and a shared bootstrap helper instead of repeated path hacks.
+## Quick start
 
-- **SQL Analyst** — NL → SQL, cache-checked, optimizer-reviewed, judge-verified, cost-estimated, safety-checked, executed against SQLite
-- **ETL Analyst** — extract data from an API, transform with pandas, data-quality-checked and judge-verified against the original request
-- **Visualization Agent** — turns a CSV or query result into a chart, judge-verified before rendering
+```bash
+uv sync --group dev
+python feed_db.py
+python main.py
+```
+
+Then try a prompt like:
+
+```text
+executive: Summarize the key quality and security risks in the current dataset.
+analyst: Show the likely lineage between the users and rides tables.
+operator: Forecast the next 30 days of ride demand and call out any anomalies.
+```
+
+Type `exit` to leave the CLI.
+
+A router agent classifies the user request and then dispatches to a specialist data-analysis stack. The system is result-grounded: each specialist agent works from real schema metadata and sample rows, then a final briefing layer turns the technical findings into a business-ready summary for the chosen audience.
+
+- **SQL Analyst** — NL → SQL, cache-checked, optimizer-reviewed, judge-verified, cost-estimated, safety-checked, and executed against SQLite
+- **ETL Analyst** — extracts or transforms data, then validates the output with deterministic quality checks and a correctness judge
+- **Visualization Agent** — selects a chart plan, validates it against the data shape, and renders the final PNG
+- **Data Quality Agent** — scans schema + sample rows to assess null rates, duplicates, drift, anomalies, and overall dataset health
+- **Data Lineage Agent** — infers likely relationships between tables from keys and schema naming, then summarizes likely upstream/downstream lineage
+- **Forecast Agent** — detects promising time and metric columns and recommends a forecasting strategy grounded in the actual table structure
+- **Security Agent** — highlights likely privacy or compliance exposures such as PII-like fields and returns a structured risk assessment with recommendations
+- **Business Summary Agent** — converts specialist results into a concise narrative for leadership, analysis, or operations; it produces a headline, executive summary, action items, and dashboard-ready recommendations
+- **Audience-aware briefing flow** — the CLI accepts `executive:`, `analyst:`, and `operator:` prefixes so the same underlying analysis can be rendered for different stakeholders
 - **Query Cache** — a judge-approved query for a repeat question (same text, same schema) skips `generate_sql → optimize_query → judge_query` entirely - 3 fewer LLM calls. Execution always re-runs fresh against live data even on a cache hit, so answers stay current
 - **Query Optimizer** — reviews every generated SQL query for performance issues (missing LIMIT, `SELECT *`, unindexed scans) before it's judged and run
 - **Cost Estimator** — deterministic (no LLM) pass using SQLite's own `EXPLAIN QUERY PLAN`: flags full table scans on large tables so an expensive query doesn't run silently
-- **Data Quality Agent** — deterministic (no LLM) pass on every ETL output: null rates, duplicate rows, outliers (IQR method), empty results. A critical finding (e.g. zero rows) triggers a retry, same as the judge
 - **Pre-load source data quality check** — before `transform_load_tool` even runs, the source file it's about to load gets the same deterministic quality pass. Catches an already-bad source up front instead of only noticing after a wasted LLM-driven transform attempt (see `check_source_quality` in `agents/etl_analyst.py`)
-- **Data Catalog Agent** — maintains human-readable column descriptions across every table, file-backed in `data/data_catalog.json` (`utils/data_catalog.py`). Only generates descriptions for columns that aren't already cataloged unless a refresh is requested, so re-running it is cheap. Reachable from the router ("describe the users table", "what does vehicle_type mean") or directly via `agents/data_catalog_agent.py`
-- **Scheduled/recurring ETL runs** — `utils/scheduler.py` + `run_scheduler.py` register ETL requests (the same natural-language text you'd type at the CLI) to run on an interval (`hourly` / `daily` / `weekly` / a raw number of seconds), file-backed in `data/etl_schedule.json` so schedules survive restarts. Run `python run_scheduler.py run` from cron/Task Scheduler/a GitHub Actions schedule, or `--loop N` for a simple long-running poll
-- **LLM-as-Judge (all three generative agents)** — an independent reviewer LLM checks the *output*, not just whether it ran without error:
-  - *SQL*: does the query answer the question correctly (right tables, joins, aggregations, filters)?
-  - *ETL*: did the tool calls actually satisfy the request (right source, right format, right transform logic, no skipped steps) — informed by the data quality report
-  - *Visualization*: does the chart type/columns fit the request and the data's shape (catches e.g. a pie chart with too many slices)?
-  
-  Each judge is independent of safety/performance/cost checks. An "incorrect" verdict feeds specific feedback back into generation and retries (up to 2x per agent); if still unresolved, the result ships with a visible ⚠️ caveat instead of being presented as fully verified.
+- **Data Catalog Agent** — maintains human-readable column descriptions across every table, file-backed in `data/data_catalog.json` (`utils/data_catalog.py`)
+- **Scheduled/recurring ETL runs** — `utils/scheduler.py` + `run_scheduler.py` register ETL requests for repeated execution; files are saved under `data` so schedules survive restarts
+- **LLM-as-Judge** — an independent reviewer validates the output before it is trusted, and the summary layer is auto-chained after specialist findings so the technical result becomes a richer insight briefing
 - **Audit Agent** — every routing decision, judge verdict, cost estimate, cache hit/miss, and quality check is logged to `data/audit_log.jsonl` (view with `python view_audit_log.py`)
 - **Conversation memory** — the CLI carries prior turns forward so follow-ups like "now filter that by region" or "chart the same thing" resolve without re-explaining context
 - **Clarify loop** — when the router can't confidently classify a request, it asks a follow-up instead of guessing or dead-ending
@@ -68,59 +85,62 @@ The retry/fallback decision logic (`_resolve_with_fallback`) is factored out fro
 
 ```mermaid
 flowchart TD
-    U["👤 User request"] -->|conversation_history<br/>prior turns, for follow-ups| R{{"🧭 Router"}}
+    U["👤 User request"] -->|conversation_history<br/>prior turns, follow-up context| R{{"🧭 Router"}}
 
-    R -->|route: sql| SQL["🗄️ SQL Analyst"]
-    R -->|route: etl| ETL["🔧 ETL Analyst"]
-    R -->|route: viz| VIZ["📊 Visualization Agent"]
-    R -->|route: catalog| CAT["📚 Data Catalog Agent"]
+    R -->|sql| SQL["🗄️ SQL Analyst"]
+    R -->|etl| ETL["🔧 ETL Analyst"]
+    R -->|visualization| VIZ["📊 Visualization Agent"]
+    R -->|catalog| CAT["📚 Data Catalog Agent"]
+    R -->|quality| Q["✅ Data Quality Agent"]
+    R -->|lineage| L["🧬 Data Lineage Agent"]
+    R -->|forecast| F["📈 Forecast Agent"]
+    R -->|security| S["🔐 Security Agent"]
+    R -->|summary| BRIEF["🧾 Insight Briefing"]
     R -.->|unclear intent| CLR(["❓ Clarify follow-up"])
     CLR -.-> R
 
-    subgraph SQLFLOW[" "]
+    SQL -->|analysis| BRIEF
+    ETL -->|analysis| BRIEF
+    VIZ -->|analysis| BRIEF
+    CAT -->|analysis| BRIEF
+    Q -->|analysis| BRIEF
+    L -->|analysis| BRIEF
+    F -->|analysis| BRIEF
+    S -->|analysis| BRIEF
+
+    BRIEF -->|executive / analyst / operator| AUD["🎯 Audience-aware briefing"]
+    AUD --> DASH["📊 Dashboard-ready summary"]
+
+    subgraph SQLFLOW["SQL pipeline"]
         direction TB
         SQL --> CACHE{"Cache hit?"}
         CACHE -->|yes| COST
         CACHE -->|no| GEN["Generate SQL"] --> OPT["Optimize query"] --> JUDGE1{"Judge: correct?"}
         JUDGE1 -->|no, retry ≤2x| GEN
-        JUDGE1 -->|yes, cache it| COST["💰 Cost estimate<br/>(medium+ notes surfaced)"]
+        JUDGE1 -->|yes, cache it| COST["💰 Cost estimate"]
         COST --> SAFE["🔒 Safety check"] --> EXEC["Execute on SQLite"]
     end
 
-    subgraph ETLFLOW[" "]
+    subgraph ETLFLOW["ETL pipeline"]
         direction TB
-        ETL --> SRCDQ{"transform_load_tool<br/>pending?"}
-        SRCDQ -->|"yes: pre-load check"| SRCQ["🔎 Source data quality"]
-        SRCQ -->|critical| ETL
-        SRCQ -->|ok/warning| TOOLS["Extract / Transform tools"]
-        SRCDQ -->|no, e.g. extract| TOOLS
-        TOOLS --> DQ["✅ Output data quality check"]
-        DQ -->|critical finding| ETL
+        ETL --> SRCQ["🔎 Source quality check"]
+        SRCQ --> TOOLS["Extract / Transform tools"]
+        TOOLS --> DQ["✅ Output quality check"]
         DQ --> JUDGE2{"Judge: correct?"}
         JUDGE2 -->|no, retry ≤2x| ETL
     end
 
-    subgraph VIZFLOW[" "]
+    subgraph VIZFLOW["Visualization"]
         direction TB
-        VIZ --> PLAN["Pick chart type + columns"] --> JUDGE3{"Judge: correct?"}
+        VIZ --> PLAN["Pick chart + columns"] --> JUDGE3{"Judge: correct?"}
         JUDGE3 -->|no, retry ≤2x| PLAN
         JUDGE3 -->|yes| RENDER["Render + save PNG"]
     end
 
-    subgraph CATFLOW[" "]
-        direction TB
-        CAT --> SCHEMA["Gather schema + sample rows"] --> MISSING{"Columns missing<br/>a description?"}
-        MISSING -->|no| CATDONE["Skip LLM call"]
-        MISSING -->|yes| GENDESC["Generate descriptions"] --> CATALOG[("🗂️ data/data_catalog.json")]
-    end
-
-    SCHED[("⏱️ data/etl_schedule.json<br/>run_scheduler.py")] -.->|due job's request| ETL
-
+    SCHED[("⏱️ data/etl_schedule.json")] -.->|due job| ETL
     EXEC --> LOG[("📜 data/audit_log.jsonl")]
-    JUDGE2 -->|yes| LOG
     RENDER --> LOG
-    CATDONE --> LOG
-    CATALOG --> LOG
+    DASH --> LOG
 
     classDef router fill:#312e81,stroke:#a855f7,stroke-width:2px,color:#f8fafc;
     classDef agent fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
@@ -130,9 +150,9 @@ flowchart TD
 
     class U user;
     class R router;
-    class SQL,ETL,VIZ,CAT agent;
-    class CACHE,JUDGE1,JUDGE2,JUDGE3,SRCDQ,MISSING judge;
-    class LOG,SCHED,CATALOG store;
+    class SQL,ETL,VIZ,CAT,Q,L,F,S,BRIEF, AUD,DASH agent;
+    class CACHE,JUDGE1,JUDGE2,JUDGE3 judge;
+    class LOG,SCHED store;
 ```
 
 **SQL Analyst flow:** curate question → gather schema → **check cache**

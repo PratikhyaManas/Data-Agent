@@ -19,8 +19,23 @@ from langchain_core.messages import HumanMessage, AIMessage
 from agents.data_agent import data_agent, DataAgentSchema
 
 
+def _extract_audience_prefix(user_input: str):
+    prefix_map = {
+        "executive:": "executive",
+        "exec:": "executive",
+        "analyst:": "analyst",
+        "operator:": "operator",
+        "ops:": "operator",
+    }
+    lowered = user_input.lower()
+    for prefix, audience in prefix_map.items():
+        if lowered.startswith(prefix):
+            return audience, user_input[len(prefix):].strip()
+    return "general", user_input
+
+
 def main():
-    print("Data Agent ready. Ask a question (SQL / ETL / chart). Type 'exit' to quit.\n")
+    print("Data Agent ready. Ask a question (SQL / ETL / chart / quality / lineage / forecast / security / briefing). Use prefixes like 'executive:', 'analyst:', or 'operator:'. Type 'exit' to quit.\n")
     history = []  # running conversation memory across turns, for follow-ups
     # _format_history() in agents/data_agent.py already caps what's SENT to
     # the router prompt at 6 turns, but without a cap here the in-memory list
@@ -37,11 +52,13 @@ def main():
         if not user_input:
             continue
 
+        audience, question = _extract_audience_prefix(user_input)
         try:
             response = data_agent.invoke(
                 DataAgentSchema(
-                    messages=[HumanMessage(content=user_input)],
+                    messages=[HumanMessage(content=question)],
                     conversation_history=history,
+                    audience=audience,
                 )
             )
         except Exception as e:
@@ -59,6 +76,9 @@ def main():
             response["needs_clarification"] if isinstance(response, dict)
             else response.needs_clarification
         )
+
+        if audience != "general":
+            answer = f"[{audience.upper()} BRIEFING]\n\n{answer}"
 
         print(f"\n{answer}\n")
 

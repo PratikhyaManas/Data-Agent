@@ -61,23 +61,26 @@
     Multi-Agent Data System · LangGraph + Claude
   </text>
 
-  <g font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600">
-    <rect x="230" y="168" width="94" height="30" rx="15" fill="#0ea5e920"/>
-    <text x="277" y="188" fill="#38bdf8" text-anchor="middle">SQL</text>
+  <g font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600">
+    <rect x="230" y="168" width="82" height="30" rx="15" fill="#0ea5e920"/>
+    <text x="271" y="188" fill="#38bdf8" text-anchor="middle">SQL</text>
 
-    <rect x="336" y="168" width="94" height="30" rx="15" fill="#22c55e20"/>
-    <text x="383" y="188" fill="#4ade80" text-anchor="middle">ETL</text>
+    <rect x="320" y="168" width="82" height="30" rx="15" fill="#22c55e20"/>
+    <text x="361" y="188" fill="#4ade80" text-anchor="middle">ETL</text>
 
-    <rect x="442" y="168" width="150" height="30" rx="15" fill="#a855f720"/>
-    <text x="517" y="188" fill="#c084fc" text-anchor="middle">Visualization</text>
+    <rect x="410" y="168" width="112" height="30" rx="15" fill="#a855f720"/>
+    <text x="466" y="188" fill="#c084fc" text-anchor="middle">Quality</text>
 
-    <rect x="604" y="168" width="130" height="30" rx="15" fill="#f472b620"/>
-    <text x="669" y="188" fill="#f472b6" text-anchor="middle">LLM-as-Judge</text>
+    <rect x="530" y="168" width="106" height="30" rx="15" fill="#f472b620"/>
+    <text x="583" y="188" fill="#f472b6" text-anchor="middle">Lineage</text>
 
-    <rect x="746" y="168" width="110" height="30" rx="15" fill="#eab30820"/>
-    <text x="801" y="188" fill="#facc15" text-anchor="middle">Catalog</text>
+    <rect x="644" y="168" width="92" height="30" rx="15" fill="#eab30820"/>
+    <text x="690" y="188" fill="#facc15" text-anchor="middle">Forecast</text>
 
-    <rect x="868" y="168" width="120" height="30" rx="15" fill="#06b6d420"/>
-    <text x="928" y="188" fill="#22d3ee" text-anchor="middle">Scheduler</text>
+    <rect x="744" y="168" width="90" height="30" rx="15" fill="#06b6d420"/>
+    <text x="789" y="188" fill="#22d3ee" text-anchor="middle">Security</text>
+
+    <rect x="842" y="168" width="150" height="30" rx="15" fill="#38bdf820"/>
+    <text x="917" y="188" fill="#7dd3fc" text-anchor="middle">Briefing</text>
   </g>
 </svg>
