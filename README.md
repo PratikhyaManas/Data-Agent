@@ -85,60 +85,57 @@ The retry/fallback decision logic (`_resolve_with_fallback`) is factored out fro
 
 ```mermaid
 flowchart TD
-    U["👤 User request"] -->|conversation_history<br/>prior turns, follow-up context| R{{"🧭 Router"}}
+    U["User request"] --> R{"Router"}
 
-    R -->|sql| SQL["🗄️ SQL Analyst"]
-    R -->|etl| ETL["🔧 ETL Analyst"]
-    R -->|visualization| VIZ["📊 Visualization Agent"]
-    R -->|catalog| CAT["📚 Data Catalog Agent"]
-    R -->|quality| Q["✅ Data Quality Agent"]
-    R -->|lineage| L["🧬 Data Lineage Agent"]
-    R -->|forecast| F["📈 Forecast Agent"]
-    R -->|security| S["🔐 Security Agent"]
-    R -->|summary| BRIEF["🧾 Insight Briefing"]
-    R -.->|unclear intent| CLR(["❓ Clarify follow-up"])
-    CLR -.-> R
+    R -->|sql| SQL["SQL Analyst"]
+    R -->|etl| ETL["ETL Analyst"]
+    R -->|visualization| VIZ["Visualization Agent"]
+    R -->|catalog| CAT["Data Catalog Agent"]
+    R -->|quality| Q["Data Quality Agent"]
+    R -->|lineage| L["Data Lineage Agent"]
+    R -->|forecast| F["Forecast Agent"]
+    R -->|security| S["Security Agent"]
+    R -->|summary| BRIEF["Insight Briefing"]
 
-    SQL -->|analysis| BRIEF
-    ETL -->|analysis| BRIEF
-    VIZ -->|analysis| BRIEF
-    CAT -->|analysis| BRIEF
-    Q -->|analysis| BRIEF
-    L -->|analysis| BRIEF
-    F -->|analysis| BRIEF
-    S -->|analysis| BRIEF
+    SQL --> BRIEF
+    ETL --> BRIEF
+    VIZ --> BRIEF
+    CAT --> BRIEF
+    Q --> BRIEF
+    L --> BRIEF
+    F --> BRIEF
+    S --> BRIEF
 
-    BRIEF -->|executive / analyst / operator| AUD["🎯 Audience-aware briefing"]
-    AUD --> DASH["📊 Dashboard-ready summary"]
+    BRIEF --> AUD["Audience-aware briefing"]
+    AUD --> DASH["Dashboard-ready summary"]
+
+    R -.->|unclear intent| CLR["Clarify follow-up"]
+    CLR --> R
 
     subgraph SQLFLOW["SQL pipeline"]
         direction TB
         SQL --> CACHE{"Cache hit?"}
-        CACHE -->|yes| COST
+        CACHE -->|yes| COST["Cost estimate"]
         CACHE -->|no| GEN["Generate SQL"] --> OPT["Optimize query"] --> JUDGE1{"Judge: correct?"}
-        JUDGE1 -->|no, retry ≤2x| GEN
-        JUDGE1 -->|yes, cache it| COST["💰 Cost estimate"]
-        COST --> SAFE["🔒 Safety check"] --> EXEC["Execute on SQLite"]
+        JUDGE1 -->|no| GEN
+        JUDGE1 -->|yes| COST
+        COST --> SAFE["Safety check"] --> EXEC["Execute on SQLite"]
     end
 
     subgraph ETLFLOW["ETL pipeline"]
         direction TB
-        ETL --> SRCQ["🔎 Source quality check"]
-        SRCQ --> TOOLS["Extract / Transform tools"]
-        TOOLS --> DQ["✅ Output quality check"]
-        DQ --> JUDGE2{"Judge: correct?"}
-        JUDGE2 -->|no, retry ≤2x| ETL
+        ETL --> SRCQ["Source quality check"] --> TOOLS["Extract / Transform tools"] --> DQ["Output quality check"] --> JUDGE2{"Judge: correct?"}
+        JUDGE2 -->|no| ETL
     end
 
     subgraph VIZFLOW["Visualization"]
         direction TB
         VIZ --> PLAN["Pick chart + columns"] --> JUDGE3{"Judge: correct?"}
-        JUDGE3 -->|no, retry ≤2x| PLAN
+        JUDGE3 -->|no| PLAN
         JUDGE3 -->|yes| RENDER["Render + save PNG"]
     end
 
-    SCHED[("⏱️ data/etl_schedule.json")] -.->|due job| ETL
-    EXEC --> LOG[("📜 data/audit_log.jsonl")]
+    EXEC --> LOG["Audit log"]
     RENDER --> LOG
     DASH --> LOG
 
@@ -150,9 +147,9 @@ flowchart TD
 
     class U user;
     class R router;
-    class SQL,ETL,VIZ,CAT,Q,L,F,S,BRIEF, AUD,DASH agent;
+    class SQL,ETL,VIZ,CAT,Q,L,F,S,BRIEF,AUD,DASH agent;
     class CACHE,JUDGE1,JUDGE2,JUDGE3 judge;
-    class LOG,SCHED store;
+    class LOG store;
 ```
 
 **SQL Analyst flow:** curate question → gather schema → **check cache**
