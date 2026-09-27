@@ -12,7 +12,7 @@ dependencies = [
     "pandas>=2.2.0",
     "pydantic>=2.7.0",
     "python-dotenv>=1.0.0",
-    "matplotlib>=3.8.0",
+    "matplotlib>=3.11.2",
     "requests>=2.31.0",
     # Jev (TypeSafe) fast-path router classifier - see utils/jev_router.py.
     # This package is published as a pre-release alpha, so keep the accepted
