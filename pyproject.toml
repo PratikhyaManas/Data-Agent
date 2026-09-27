@@ -14,6 +14,10 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "matplotlib>=3.8.0",
     "requests>=2.31.0",
+    # Jev (TypeSafe) fast-path router classifier - see utils/jev_router.py.
+    # Pre-release package; the router degrades gracefully to the existing
+    # LLM path if this isn't installed or TYPESAFE_API_KEY isn't set.
+    "langchain-typesafe>=0.1.0",
 ]
 
 [dependency-groups]

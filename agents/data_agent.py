@@ -23,6 +23,7 @@ from Models.schema import (
 )
 from utils.llm_pick import invoke_with_resilience
 from utils.audit import log_event
+from utils.jev_router import jev_route
 from agents.sql_analyst import sql_analyst
 from agents.etl_analyst import etl_analyst
 from agents.visualization_agent import visualization_agent
@@ -65,12 +66,38 @@ def _format_history(history: list, max_turns: int = 6) -> str:
 
 def route_node(state: DataAgentSchema) -> DataAgentSchema:
     last_user_msg = state.messages[-1].content
-    prompt = ROUTER_PROMPT.format(
-        history=_format_history(state.conversation_history), question=last_user_msg
-    )
+    history = _format_history(state.conversation_history)
+
+    # Fast path: Jev (TypeSafe) returns a typed choice + calibrated
+    # confidence instead of generated text, which is a cheaper and
+    # faster fit for a fixed-category router than a full LLM call.
+    # jev_route() returns None if Jev is disabled, unavailable, erroring,
+    # or unsure - any of those falls straight through to the LLM router
+    # below, the same way a transient LLM failure degrades elsewhere in
+    # this repo (see utils/llm_pick.py:invoke_with_resilience).
+    jev_result = jev_route(last_user_msg, history)
+    if jev_result is not None:
+        route, confidence = jev_result
+        state.route_response = route
+        log_event(
+            "route",
+            question=last_user_msg,
+            decision=route,
+            backend="jev",
+            confidence=round(confidence, 4),
+        )
+        return state
+
+    prompt = ROUTER_PROMPT.format(history=history, question=last_user_msg)
     result = invoke_with_resilience("low", [HumanMessage(content=prompt)], structured_schema=RouterSchema)
     state.route_response = result.answer
-    log_event("route", question=last_user_msg, decision=result.answer, reasoning=result.comments)
+    log_event(
+        "route",
+        question=last_user_msg,
+        decision=result.answer,
+        reasoning=result.comments,
+        backend="llm",
+    )
     return state
 
 
