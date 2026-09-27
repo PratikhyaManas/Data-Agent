@@ -3,7 +3,7 @@ name = "data-agent"
 version = "0.1.0"
 description = "Multi-agent data analysis system with SQL, ETL, and visualization workflows."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "langchain>=0.3.0",
     "langgraph>=0.2.0",
@@ -15,9 +15,10 @@ dependencies = [
     "matplotlib>=3.8.0",
     "requests>=2.31.0",
     # Jev (TypeSafe) fast-path router classifier - see utils/jev_router.py.
-    # Pre-release package; the router degrades gracefully to the existing
-    # LLM path if this isn't installed or TYPESAFE_API_KEY isn't set.
-    "langchain-typesafe>=0.1.0",
+    # This package is published as a pre-release alpha, so keep the accepted
+    # range aligned with the versions actually available on PyPI instead of the
+    # newer 0.1.x line that uv cannot resolve for this project.
+    "langchain-typesafe>=0.0.1a3,<0.1.0",
 ]
 
 [dependency-groups]
